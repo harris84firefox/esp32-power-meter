@@ -5,12 +5,14 @@ import urequests
 import time
 import struct
 import gc
+import webrepl
+from machine import WDT
 
 # ── Import Secrets ─────────────────────────────────────────────────
 import secrets  # This loads the secrets.py file from the ESP32
 
 # ── OTA Update Settings ────────────────────────────────────────────
-CURRENT_VERSION = 1.0
+CURRENT_VERSION = 2
 VERSION_URL = "https://raw.githubusercontent.com/harris84firefox/esp32-power-meter/main/version.txt"
 UPDATE_URL  = "https://raw.githubusercontent.com/harris84firefox/esp32-power-meter/main/boot.py"
 
@@ -120,7 +122,7 @@ def read_meter():
     return readings
 
 # ── WiFi ──────────────────────────────────────────────────────────
-def connect_wifi():
+def connect_wifi(wdt):
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if wlan.isconnected():
@@ -128,6 +130,7 @@ def connect_wifi():
     print(f"Connecting to {WIFI_SSID}...")
     wlan.connect(WIFI_SSID, WIFI_PASSWORD)
     for _ in range(20):
+        wdt.feed() 
         if wlan.isconnected():
             break
         time.sleep(0.5)
@@ -154,7 +157,7 @@ def upload(readings):
         return False
 
 # ── OTA Update Function ───────────────────────────────────────────
-def check_for_updates():
+def check_for_updates(wdt):
     print(f"Checking for updates... (Current Version: {CURRENT_VERSION})")
     try:
         # 1. Fetch the version number from GitHub
@@ -162,6 +165,7 @@ def check_for_updates():
         response = urequests.get(VERSION_URL, timeout=10)
         github_version = float(response.text.strip())
         response.close()
+        wdt.feed()
         
         # 2. Compare versions
         if github_version > CURRENT_VERSION:
@@ -171,6 +175,7 @@ def check_for_updates():
             response = urequests.get(UPDATE_URL, timeout=15)
             new_code = response.text
             response.close()
+            wdt.feed() 
             
             # 4. Overwrite the local boot.py
             with open('boot.py', 'w') as f:
@@ -188,18 +193,26 @@ def check_for_updates():
 
 # ── Main Loop ─────────────────────────────────────────────────────
 def main():
-    print("EA777 + ThingSpeak — ESP32-C3")
-    wlan = connect_wifi()
+    wdt = WDT(timeout=30000)  # add at top of main()
+    wdt.feed()                 # call this inside the while loop
     
-    # Run the OTA check right after WiFi connects, before the main loop starts
+    print("EA777 + ThingSpeak — ESP32-C3")
+    wlan = connect_wifi(wdt)
+    
+    # 1. Start WebREPL once WiFi is connected
     if wlan.isconnected():
-        check_for_updates()
+        webrepl.start()
+        
+        # 2. Check for OTA updates
+        check_for_updates(wdt)
 
     while True:
+        wdt.feed()
+        
         # Reconnect WiFi if dropped
         if not wlan.isconnected():
             print("WiFi dropped — reconnecting...")
-            wlan = connect_wifi()
+            wlan = connect_wifi(wdt)
 
         t = time.localtime()
         print(f"\n{'='*40}")
