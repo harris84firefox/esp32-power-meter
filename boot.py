@@ -12,7 +12,7 @@ from machine import WDT
 import secrets  # This loads the secrets.py file from the ESP32
 
 # ── OTA Update Settings ────────────────────────────────────────────
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 VERSION_URL = "https://raw.githubusercontent.com/harris84firefox/esp32-power-meter/main/version.txt"
 UPDATE_URL  = "https://raw.githubusercontent.com/harris84firefox/esp32-power-meter/main/boot.py"
 
