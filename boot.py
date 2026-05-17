@@ -12,7 +12,7 @@ from machine import WDT
 import secrets  # This loads the secrets.py file from the ESP32
 
 # ── OTA Update Settings ────────────────────────────────────────────
-CURRENT_VERSION = 2
+CURRENT_VERSION = 1
 VERSION_URL = "https://raw.githubusercontent.com/harris84firefox/esp32-power-meter/main/version.txt"
 UPDATE_URL  = "https://raw.githubusercontent.com/harris84firefox/esp32-power-meter/main/boot.py"
 
@@ -201,7 +201,11 @@ def main():
     
     # 1. Start WebREPL once WiFi is connected
     if wlan.isconnected():
-        webrepl.start()
+        try:
+            webrepl.start(password=secrets.WEBREPL_PASS)
+            print("WebREPL started")
+        except Exception as e:
+            print(f"WebREPL skipped: {e}")
         
         # 2. Check for OTA updates
         check_for_updates(wdt)
