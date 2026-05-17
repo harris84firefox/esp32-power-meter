@@ -10,7 +10,7 @@ import gc
 import secrets  # This loads the secrets.py file from the ESP32
 
 # ── OTA Update Settings ────────────────────────────────────────────
-CURRENT_VERSION = 0.9 
+CURRENT_VERSION = 1.0
 VERSION_URL = "https://github.com/harris84firefox/esp32-power-meter/blob/main/version.txt"
 UPDATE_URL  = "https://github.com/harris84firefox/esp32-power-meter/blob/main/boot.py"
 
