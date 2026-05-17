@@ -5,6 +5,8 @@ import urequests
 import time
 import struct
 import gc
+import socket
+import ssl
 
 # ── Import Secrets ─────────────────────────────────────────────────
 import secrets  # This loads the secrets.py file from the ESP32
@@ -153,35 +155,74 @@ def upload(readings):
         print(f"  Upload error: {e}")
         return False
 
+# ── GitHub Raw Fetch (Bypasses urequests chunked error) ───────────
+def fetch_github(url):
+    # Split the URL to get the host and the path
+    _, _, host, path = url.split('/', 3)
+    
+    # Get the IP address of raw.githubusercontent.com
+    addr = socket.getaddrinfo(host, 443)[0][-1]
+    
+    s = socket.socket()
+    try:
+        s.connect(addr)
+        s = ssl.wrap_socket(s)
+        
+        # Force HTTP/1.0 so GitHub does NOT use chunked encoding
+        request = f"GET /{path} HTTP/1.0\r\nHost: {host}\r\nUser-Agent: ESP32-C3\r\n\r\n"
+        s.write(request.encode())
+        
+        # Read the raw response
+        response = b""
+        while True:
+            data = s.read(512)
+            if not data:
+                break
+            response += data
+            
+        # The response includes HTTP headers and the actual code.
+        # We need to split them and only return the code.
+        header_end = response.find(b"\r\n\r\n")
+        if header_end > 0:
+            body = response[header_end+4:]
+            return body.decode('utf-8')
+        return None
+    finally:
+        s.close()
+
 # ── OTA Update Function ───────────────────────────────────────────
 def check_for_updates():
     print(f"Checking for updates... (Current Version: {CURRENT_VERSION})")
     try:
-        # 1. Fetch the version number from GitHub
-        gc.collect() # Free up RAM before making HTTPS requests
-        response = urequests.get(VERSION_URL, timeout=10)
-        github_version = float(response.text.strip())
-        response.close()
+        gc.collect() # Free up RAM
+        
+        # 1. Fetch version using the new function
+        version_text = fetch_github(VERSION_URL)
+        if not version_text:
+            print("  ✗ Failed to reach GitHub")
+            return
+            
+        github_version = float(version_text.strip())
         
         # 2. Compare versions
         if github_version > CURRENT_VERSION:
             print(f"New version {github_version} found! Downloading...")
             
             # 3. Download the new code
-            response = urequests.get(UPDATE_URL, timeout=15)
-            new_code = response.text
-            response.close()
+            new_code = fetch_github(UPDATE_URL)
             
-            # 4. Overwrite the local main.py
-            with open('main.py', 'w') as f:
-                f.write(new_code)
-                
-            print("Update complete. Rebooting ESP32...")
-            time.sleep(2)
-            machine.reset() # Restart the board to run the new code
-            
+            if new_code:
+                # 4. Overwrite local main.py
+                with open('main.py', 'w') as f:
+                    f.write(new_code)
+                    
+                print("  ✓ Update complete. Rebooting ESP32...")
+                time.sleep(2)
+                machine.reset()
+            else:
+                print("  ✗ Failed to download new code")
         else:
-            print("No updates available. Running current code.")
+            print("  ✓ No updates available. Running current code.")
             
     except Exception as e:
         print(f"OTA check failed: {e}")
